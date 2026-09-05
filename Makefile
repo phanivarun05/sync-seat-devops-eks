@@ -27,11 +27,17 @@ mail:
 		--build-arg SERVICE_PATH=mail \
 		-t $(IMAGE_PREFIX)/mail:$(TAG) .
 
+homepage:
+	docker build -f $(DOCKERFILE_BACKEND) \
+		--build-arg SERVICE_PATH=homepage \
+		-t $(IMAGE_PREFIX)/homepage:$(TAG) .
+
 
 build-backend: \
 	booking \
 	api-gateway \
-	mail
+	mail \
+	homepage
 
 # ============================================================
 # Security Scanning
@@ -41,7 +47,8 @@ build-backend: \
 BACKEND_SERVICES = \
 	booking \
 	api-gateway \
-	mail
+	mail \
+	homepage
 
 TRIVY := trivy
 SECURITY_SEVERITY := HIGH,CRITICAL
