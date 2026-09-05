@@ -5,6 +5,10 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+ARG VITE_AUTH_SERVICE
+
+ENV VITE_AUTH_SERVICE=${VITE_AUTH_SERVICE}
+
 # 1. Copy package files first to take advantage of Docker caching
 COPY syncseatapp/Frontend/package*.json ./
 
@@ -27,6 +31,9 @@ RUN rm -rf /usr/share/nginx/html/*
 
 # Copy the static production bundle compiled by Vite from Stage 1 into Nginx
 COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Add this line near the end of your Stage 2 (runner) in Dockerfile.frontend
+COPY syncseatapp/Frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Expose standard HTTP web traffic port
 EXPOSE 80

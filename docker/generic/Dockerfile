@@ -3,37 +3,45 @@
 # ======================================================
 FROM node:22-alpine AS builder
 
-# The directory of the microservice (e.g., booking, api-gateway, mail)
+# The directory of the microservice (passed dynamically from docker-compose)
 ARG SERVICE_PATH=booking
 
 WORKDIR /app
 
-# 1. Copy only package files for the specific service to leverage Docker cache layers
-COPY syncseatapp/Backend/${SERVICE_PATH}/package*.json ./
+# 1. Copy package files matching the exact workspace directory structure
+COPY syncseatapp/Backend/${SERVICE_PATH}/package*.json ./Backend/${SERVICE_PATH}/
 
-# 2. Install dependencies cleanly
-RUN npm install 
+# 2. Step into the specific microservice folder to cleanly install dependencies
+WORKDIR /app/Backend/${SERVICE_PATH}
+RUN npm install
 
-# 3. Copy only the code for this specific service directly into /app
-COPY syncseatapp/Backend/${SERVICE_PATH}/ .
+# 3. Step back out to the app root to lay out the source code structure
+WORKDIR /app
+# Copy the shared utilities folder (satisfies '../../utils/keepAlive.js')
+COPY syncseatapp/Backend/utils/ ./Backend/utils/
+# Copy the specific microservice source code
+COPY syncseatapp/Backend/${SERVICE_PATH}/ ./Backend/${SERVICE_PATH}/
 
 # ======================================================
-# Stage 2: Production Run
+# Stage 2: Production-Hardened Runtime
 # ======================================================
 FROM node:22-alpine AS runner
 
-ARG SERVICE_PATH=booking
-
 WORKDIR /app
+ENV NODE_ENV=production
 
-# Copy only the node_modules from the builder stage
-COPY --from=builder /app/node_modules ./node_modules
+# Bring the service path build argument into the runtime stage environment
+ARG SERVICE_PATH=booking
+ENV SERVICE_PATH_ENV=${SERVICE_PATH}
 
-# Copy the application source files from the builder stage
-COPY --from=builder /app/ ./
+# Copy the completely structured Backend directory tree from Stage 1
+COPY --from=builder /app/Backend/ ./Backend/
 
-# Drop root privileges for security (alpine node images include a 'node' user)
+# Security Hardening: Drop root privileges (Alpine Node images include a 'node' user)
 USER node
 
-# Run the entry file natively
+# Set the working execution context directly inside the target microservice folder
+WORKDIR /app/Backend/${SERVICE_PATH_ENV}
+
+# Run the entry file natively using the V8 engine
 CMD ["node", "index.js"]

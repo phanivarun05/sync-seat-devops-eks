@@ -1,0 +1,165 @@
+name: syncseatapp
+
+services:
+  # ======================================================
+  # INFRASTRUCTURE SERVICES
+  # ======================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: syncseat-postgres
+    environment:
+      POSTGRES_USER: syncseatapp
+      POSTGRES_PASSWORD: syncseatapp
+      POSTGRES_DB: syncseatapp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # Hardcoded user string ensures the healthcheck parses flawlessly inside the container
+      test: ["CMD-SHELL", "pg_isready -U syncseatapp -d syncseatapp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - syncseatapp-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: syncseat-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - syncseatapp-network
+
+  # ======================================================
+  # BACKEND MICROSERVICES
+  # ======================================================
+  booking:
+    build:
+      context: ../
+      dockerfile: docker/generic/Dockerfile
+      args:
+        SERVICE_PATH: booking
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+    environment:
+      - PORT=3001
+      - UPSTASH_REDIS_URL=redis://redis:6379
+      # Corrected connection scheme protocol to postgresql://
+      - SUPABASE_URL=http://postgres:5432
+      - SUPABASE_SERVICE_ROLE_KEY=syncseatapp
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - syncseatapp-network
+
+  mail:
+    build:
+      context: ../
+      dockerfile: docker/generic/Dockerfile
+      args:
+        SERVICE_PATH: mail
+    ports:
+      - "3002:3002"
+    restart: unless-stopped
+    environment:
+      - PORT=3002
+      - UPSTASH_REDIS_URL=redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - syncseatapp-network
+
+  homepage:
+    build:
+      context: ../
+      dockerfile: docker/generic/Dockerfile
+      args:
+        SERVICE_PATH: homepage
+    ports:
+      - "3003:3003"
+    restart: unless-stopped
+    environment:
+      - PORT=3003
+      - UPSTASH_REDIS_URL=redis://redis:6379
+      - SUPABASE_URL=http://postgres:5432
+      - SUPABASE_SERVICE_ROLE_KEY=syncseatapp
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - syncseatapp-network
+
+  api-gateway:
+    build:
+      context: ../
+      dockerfile: docker/generic/Dockerfile
+      args:
+        SERVICE_PATH: api-gateway
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
+    environment:
+      - PORT=4000
+      - UPSTASH_REDIS_URL=redis://redis:6379
+      - SUPABASE_URL=http://postgres:5432
+      - SUPABASE_SERVICE_ROLE_KEY=syncseatapp
+      - JWT_SECRET=syncseatapp_secret_key_placeholder
+    # Changed application dependencies to service_started since they don't have healthchecks
+    depends_on:
+      booking:
+        condition: service_started
+      mail:
+        condition: service_started
+      homepage:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - syncseatapp-network
+
+  # ======================================================
+  # FRONTEND USER INTERFACE
+  # ======================================================
+  frontend:
+    build:
+      context: ../
+      dockerfile: docker/frontend/Dockerfile
+      args:
+        VITE_AUTH_SERVICE: http://localhost:9000/api
+    ports:
+      - "9000:80"
+    restart: unless-stopped
+    depends_on:
+      api-gateway:
+        condition: service_started
+    networks:
+      - syncseatapp-network
+
+# ======================================================
+# NETWORKS & VOLUMES DATA STORE DECLARATIONS
+# ======================================================
+networks:
+  syncseatapp-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
