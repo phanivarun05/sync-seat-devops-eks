@@ -4,13 +4,14 @@
 # ============================================================
 
 DOCKERFILE_BACKEND := docker/generic/Dockerfile
+DOCKERFILE_FRONTEND := docker/frontend/Dockerfile
 
 IMAGE_PREFIX := syncseatapp
 TAG ?= latest
 
 .PHONY: \
-	booking api-gateway mail \
-	build-backend security-scan clean
+	booking api-gateway mail homepage \
+	build-backend build-frontend security-scan clean
 
 booking:
 	docker build -f $(DOCKERFILE_BACKEND) \
@@ -38,6 +39,14 @@ build-backend: \
 	api-gateway \
 	mail \
 	homepage
+
+build-frontend:
+	docker build -f $(DOCKERFILE_FRONTEND) \
+		-t $(IMAGE_PREFIX)/frontend:$(TAG) .
+
+build-all: \
+	build-backend \
+	build-frontend
 
 # ============================================================
 # Security Scanning
