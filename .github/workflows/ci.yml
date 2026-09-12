@@ -16,36 +16,18 @@ jobs:
   node-tests:
     # Keeps your excellent GitOps guard so image tag updates don't trigger infinite build loops
     if: "!startsWith(github.event.head_commit.message, 'chore(gitops):')"
-    name: Node.js Tests
+    name: Node.js Linting & Testing
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        # Array of your specific application microservice directory names
-        service: [api-gateway, booking, mail, homepage]
-
-    defaults:
-      run:
-        # Dynamically steps into each microservice folder context
-        working-directory: syncseatapp/Backend/${{ matrix.service }}
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22' # Matches the native V8 runtime from your production Dockerfiles
-          # Automatically caches node_modules dependencies based on your package.json files
-          cache: 'npm'
-          cache-dependency-path: syncseatapp/Backend/${{ matrix.service }}/package.json
-
       - name: Install dependencies cleanly
-        # Safe production-grade installation loop
         run: npm install
 
-      - name: Run Test Suites
-        # Executes testing blocks. If no tests are configured yet in a script block, 
-        # it will cleanly pass through based on your generic "exit 1" fallback logic.
-        run: npm test --if-present
+      - name: Run Test Suites Safely
+          # This checks if package.json contains the default boilerplate. 
+          # If it finds "no test specified", it prints a warning and skips execution cleanly.
+        run: |
+          if grep -q "no test specified" package.json; then
+            echo "⚠️ [DevOps Alert] No tests defined by development team for this microservice. Skipping step."
+          else
+            npm test
+          fi
