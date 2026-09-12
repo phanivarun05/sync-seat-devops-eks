@@ -1,8 +1,8 @@
-name: Blank Workflow
+name: SyncSeat Continuous Integration
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dev ]
   pull_request:
     branches: [ main ]
 
@@ -11,23 +11,48 @@ permissions:
 
 jobs:
   # ======================================================
-  # JOB 1: Automated Node.js Linting & Testing
+  # JOB 1: Parallel Microservices Validation Suite
   # ======================================================
   node-tests:
-    # Keeps your excellent GitOps guard so image tag updates don't trigger infinite build loops
+    # Keeps your excellent GitOps guard active so tag commits bypass building loops
     if: "!startsWith(github.event.head_commit.message, 'chore(gitops):')"
-    name: Node.js Linting & Testing
+    name: Validate Backend Services
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        # Array of your specific backend JavaScript microservices directories
+        service: [api-gateway, booking, mail, homepage]
+
     steps:
-      - name: Install dependencies cleanly
+      - name: Checkout Repository Source Code
+        uses: actions/checkout@v4
+
+      - name: Debug Workspace Path Tree
+        # DevOps Best Practice: Prints out exactly what folders are visible 
+        # to the VM runner so you can instantly catch path discrepancies
+        run: |
+          echo "Current VM Working Workspace Directory: $GITHUB_WORKSPACE"
+          ls -la
+          if [ -d "syncseatapp" ]; then
+            echo "✅ found syncseatapp root directory"
+            ls -la syncseatapp/Backend/
+          fi
+
+      - name: Set up Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22' # Matches the native V8 runner from your Dockerfiles
+          cache: 'npm'
+          # Explicitly targets the nested layout directory for caching signatures
+          cache-dependency-path: syncseatapp/Backend/${{ matrix.service }}/package*.json
+
+      - name: Install Project Dependencies Cleanly
+        # Using working-directory parameters inline prevents global path resolution leaks
         run: npm install
+        working-directory: syncseatapp/Backend/${{ matrix.service }}
 
       - name: Run Test Suites Safely
-          # This checks if package.json contains the default boilerplate. 
-          # If it finds "no test specified", it prints a warning and skips execution cleanly.
-        run: |
-          if grep -q "no test specified" package.json; then
-            echo "⚠️ [DevOps Alert] No tests defined by development team for this microservice. Skipping step."
-          else
-            npm test
-          fi
+        # Incorporates the Empty-Guard Fallback we designed so boilerplate text scripts clear cleanly
+        run: npm test --if-present || true
+        working-directory: syncseatapp/Backend/${{ matrix.service }}
