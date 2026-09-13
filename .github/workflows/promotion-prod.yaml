@@ -1,0 +1,123 @@
+name: Promote Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Immutable image tag to promote (e.g. sha-79bbf8b99529...)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    name: Promote Image to Production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate Image Tag Format
+        run: |
+          TAG="${{ inputs.image_tag }}"
+
+          # Updated regex validation loop to accommodate long Git SHA formatting schemas smoothly
+          if [[ ! "$TAG" =~ ^sha-[a-f0-9]{40}$ ]]; then
+            echo "❌ ERROR: Invalid image tag format: $TAG"
+            echo "Expected standard long Git SHA format: sha-40_character_hex_string"
+            exit 1
+          fi
+
+          echo "✅ Validated promotion target tag: $TAG"
+
+      - name: Verify Images Exist on Docker Hub
+        run: |
+          TAG="${{ inputs.image_tag }}"
+
+          # Bash associative array mapping your 5 official SyncSeat microservice repository names
+          declare -A images=(
+            [booking]="syncseatapp-booking"
+            [api-gateway]="synseatapp-api-gateway"
+            [mail]="syncseatapp-mail"
+            [homepage]="syncseatapp-homepage"
+            [frontend]="syncseatapp-frontend"
+          )
+
+          for service in "${!images[@]}"; do
+            repository="${images[$service]}"
+            image="docker.io/${DOCKERHUB_USERNAME}/${repository}:${TAG}"
+
+            echo "Auditing cloud registry layer: ${image}"
+
+            # Interrogates Docker Hub's engine manifest registry without downloading the full image layers
+            if ! docker manifest inspect "${image}" > /dev/null 2>&1; then
+              echo "❌ CRITICAL ERROR: Image target does not exist in registry: ${image}"
+              exit 1
+            fi
+          done
+
+          echo "✅ All core microservice platform images exist on Docker Hub."
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
+      - name: Checkout Application Source Code
+        # This brings down your local Helm templates and Makefiles so they are accessible to the runner
+        uses: actions/checkout@v4
+
+      - name: Clone GitOps Infrastructure Repository
+        env:
+          GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+        run: |
+          git clone \
+            "https://x-access-token:${GITOPS_TOKEN}@github.com/phanivarun05/sync-seat-gitops-eks.git" \
+            gitops
+
+      - name: Update Production Image Tags
+        working-directory: gitops
+        run: |
+          TAG="${{ inputs.image_tag }}"
+
+          services=(
+            booking
+            api-gateway
+            mail
+            homepage
+            frontend
+          )
+
+          # Stream-editor locates each service block inside your production sheet and patches the tag
+          for service in "${services[@]}"; do
+            sed -i "/^${service}:/,/^[^[:space:]]/ s/^    tag: .*/    tag: \"${TAG}\"/" \
+              helm/syncseat/values-prod.yaml
+          done
+
+      - name: Validate Production Helm Manifests
+        # Compiles your Helm sub-charts locally using your umbrella layout to verify template syntax sanity
+        run: |
+          echo "========================================="
+          echo "Validating production chart configurations"
+          echo "========================================="
+          helm template syncseat/ -f gitops/helm/syncseat/values-prod.yaml
+
+      - name: Commit Production Promotion Change
+        working-directory: gitops
+        run: |
+          TAG="${{ inputs.image_tag }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@://github.com"
+
+          git add helm/syncseat/values-prod.yaml
+
+          if git diff --cached --quiet; then
+            echo "Production values configuration is already running target tag: ${TAG}"
+            exit 0
+          fi
+
+          git commit -m "chore(gitops): promote core cluster images to production tag ${TAG}"
+
+      - name: Dispatch Changes to Main Remote Control Path
+        working-directory: gitops
+        env:
+          GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+        run: git push origin main
