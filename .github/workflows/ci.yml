@@ -201,7 +201,7 @@ jobs:
 
           # Clone your dedicated deployment repository using your secure access token link
           git clone \
-            "https://x-access-token:${GITOPS_TOKEN}@://github.com/phanivarun05/sync-seat-gitops-eks.git" \
+            "https://x-access-token:${GITOPS_TOKEN}@github.com/phanivarun05/sync-seat-gitops-gke.git" \
             gitops
 
           cd gitops
