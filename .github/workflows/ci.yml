@@ -218,7 +218,7 @@ jobs:
           # Stream-editor locates the block match and updates the tag string safely
           for service in "${services[@]}"; do
             sed -i "/^${service}:/,/^[^[:space:]]/ s/^    tag: .*/    tag: \"${TAG}\"/" \
-              values-dev.yaml
+              helm/syncseat/values-dev.yaml
           done
 
           # Set up official GitHub actions bot identification signatures
@@ -226,7 +226,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@://github.com"
 
           # Stage the updated global values configurations sheet
-          git add values-dev.yaml
+          git add helm/syncseat/values-dev.yaml
 
           # Safeguard check: Exits cleanly if no modifications were detected
           if git diff --cached --quiet; then
