@@ -49,7 +49,7 @@ jobs:
 
       - name: Install Project Dependencies Cleanly
         # Using working-directory parameters inline prevents global path resolution leaks
-        run: npm install
+        run: npm install --legacy-peer-deps
         working-directory: syncseatapp/Backend/${{ matrix.service }}
 
       - name: Run Test Suites Safely
