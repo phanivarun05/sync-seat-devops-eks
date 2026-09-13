@@ -130,5 +130,113 @@ jobs:
           # FIXED: Removed the invalid "ignorefile" row. 
           # The action will natively find your root '.trivyignore' file from the checkout step!
 
+    # ======================================================
+  # JOB 4: Production Registry Delivery & GitOps Sync Loop
+  # ======================================================
+  docker-publish:
+    # Strict Production Guard: Runs ONLY when code merges to main/master branches 
+    # and completely ignores automated chore tag commits to avoid infinite loops
+    if: github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'chore(gitops):')
+    name: Deliver Images & Sync GitOps
+    runs-on: ubuntu-latest
+    # Wait patiently for both your build steps and security scans to clear cleanly
+    needs:
+      - docker-build
+      - security-scan
+
+    steps:
+      - name: Checkout Application Source Code
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub Registry
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Download Packaged Docker Images Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: syncseatapp-images-${{ github.sha }}
+          path: docker-images
+
+      - name: Load Extracted Image Layers into Runner Daemon
+        run: docker load -i docker-images/syncseatapp-images.tar
+
+      - name: Tag and Publish Microservices to Docker Hub
+        run: |
+          TAG="sha-${{ github.sha }}"
+
+          # Bash associative array mapping local image targets onto your cloud repositories
+          declare -A images=(
+            [booking]="syncseatapp-booking"
+            [api-gateway]="synseatapp-api-gateway"
+            [mail]="syncseatapp-mail"
+            [homepage]="syncseatapp-homepage"
+            [frontend]="syncseatapp-frontend"
+          )
+
+          for service in "${!images[@]}"; do
+            repository="${images[$service]}"
+
+            echo "Pushing: ${DOCKERHUB_USERNAME}/${repository}:${TAG}"
+
+            # Tag local Makefile build layers to your target Docker Hub account destination
+            docker tag \
+              "syncseatapp-${service}:${TAG}" \
+              "docker.io/${DOCKERHUB_USERNAME}/${repository}:${TAG}"
+
+            # Safely deliver the verified image layer stream up to the cloud registry
+            docker push \
+              "docker.io/${DOCKERHUB_USERNAME}/${repository}:${TAG}"
+          done
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
+      - name: Automate Configuration Sync inside GitOps Repository
+        env:
+          GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+        run: |
+          TAG="sha-${{ github.sha }}"
+
+          # Clone your dedicated deployment repository using your secure access token link
+          git clone \
+            "https://x-access-token:${GITOPS_TOKEN}@://github.com/phanivarun05/sync-seat-gitops-eks.git" \
+            gitops
+
+          cd gitops
+
+          # Array matching the exact sub-chart blocks inside your main values-dev.yaml
+          services=(
+            booking
+            api-gateway
+            mail
+            homepage
+            frontend
+          )
+
+          # Stream-editor locates the block match and updates the tag string safely
+          for service in "${services[@]}"; do
+            sed -i "/^${service}:/,/^[^[:space:]]/ s/^    tag: .*/    tag: \"${TAG}\"/" \
+              values-dev.yaml
+          done
+
+          # Set up official GitHub actions bot identification signatures
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@://github.com"
+
+          # Stage the updated global values configurations sheet
+          git add values-dev.yaml
+
+          # Safeguard check: Exits cleanly if no modifications were detected
+          if git diff --cached --quiet; then
+            echo "No infrastructure configurations changes detected. Skipping push."
+            exit 0
+          fi
+
+          # Commit and dispatch changes back to your operational main control path
+          git commit -m "chore(gitops): update syncseat core cluster images to ${TAG}"
+          git push origin main
+
 
 
