@@ -72,6 +72,13 @@ jobs:
             "https://x-access-token:${GITOPS_TOKEN}@github.com/phanivarun05/sync-seat-gitops-eks.git" \
             gitops
 
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Setup Kubeconform
+        uses: bmuschko/setup-kubeconform@v1
+        with:
+          kubeconform-version: '0.6.7'
       - name: Update Production Image Tags
         working-directory: gitops
         run: |
