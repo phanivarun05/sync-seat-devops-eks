@@ -65,7 +65,7 @@ SECURITY_SEVERITY := HIGH,CRITICAL
 
 security-scan:
 	@echo "========================================"
-	@echo "Running Trivy security scans"
+	@echo "Running Trivy security scans with .trivyignore"
 	@echo "Severity: $(SECURITY_SEVERITY)"
 	@echo "========================================"
 
@@ -74,6 +74,7 @@ security-scan:
 		echo "Scanning $(IMAGE_PREFIX)-$$service:$(TAG)"; \
 		$(TRIVY) image \
 			--severity $(SECURITY_SEVERITY) \
+			--ignorefile .trivyignore \
 			--exit-code 1 \
 			$(IMAGE_PREFIX)-$$service:$(TAG); \
 	done
@@ -83,11 +84,12 @@ security-scan:
 		echo "Scanning $(IMAGE_PREFIX)-$$service:$(TAG)"; \
 		$(TRIVY) image \
 			--severity $(SECURITY_SEVERITY) \
+			--ignorefile .trivyignore \
 			--exit-code 1 \
 			$(IMAGE_PREFIX)-$$service:$(TAG); \
 	done
 
 	@echo ""
 	@echo "========================================="
-	@echo "All security scans passed"
+	@echo "All security scans passed (Ignored risks filtered)"
 	@echo "========================================="

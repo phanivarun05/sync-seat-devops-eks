@@ -13,7 +13,8 @@ COPY syncseatapp/Backend/${SERVICE_PATH}/package*.json ./Backend/${SERVICE_PATH}
 
 # 2. Step into the specific microservice folder to cleanly install dependencies
 WORKDIR /app/Backend/${SERVICE_PATH}
-RUN npm install
+# Added --omit=dev to prevent devDependencies from entering the build
+RUN npm install --omit=dev --legacy-peer-deps 
 
 # 3. Step back out to the app root to lay out the source code structure
 WORKDIR /app
@@ -26,6 +27,9 @@ COPY syncseatapp/Backend/${SERVICE_PATH}/ ./Backend/${SERVICE_PATH}/
 # Stage 2: Production-Hardened Runtime
 # ======================================================
 FROM node:22-alpine AS runner
+
+# OS Security Fix: Upgrade libcrypto3 and libssl3 to resolve CVE-2026-14456
+RUN apk update && apk upgrade --no-cache libcrypto3 libssl3
 
 WORKDIR /app
 ENV NODE_ENV=production

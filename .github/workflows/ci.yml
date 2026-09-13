@@ -57,7 +57,7 @@ jobs:
         run: npm test --if-present || true
         working-directory: syncseatapp/Backend/${{ matrix.service }}
 
-    # ======================================================
+  # ======================================================
   # JOB 2: Automated Docker Multi-Service Build Pipeline
   # ======================================================
   docker-build:
@@ -92,4 +92,39 @@ jobs:
           name: syncseatapp-images-${{ github.sha }}
           path: docker-images/syncseatapp-images.tar
           retention-days: 1
+
+  # ======================================================
+  # JOB 3: Isolated Vulnerability Security Scan (Trivy)
+  # ======================================================
+  security-scan:
+    if: "!startsWith(github.event.head_commit.message, 'chore(gitops):')"
+    name: Security Scan (Trivy)
+    runs-on: ubuntu-latest
+    needs: docker-build
+
+    steps:
+      - name: Checkout Repository Source Code
+        uses: actions/checkout@v4
+
+      - name: Install Security Scanner (Trivy)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://github.io | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://github.io $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+      - name: Download Packaged Docker Images Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: syncseatapp-images-${{ github.sha }}
+          path: docker-images
+
+      - name: Load Extracted Image Layers into Runner Daemon
+        run: docker load -i docker-images/syncseatapp-images.tar
+
+      - name: Execute Security Vulnerability Audit via Makefile
+        # The Makefile will now catch the checked-out .trivyignore file natively
+        run: make security-scan TAG="sha-${{ github.sha }}"
 
