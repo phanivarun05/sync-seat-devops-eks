@@ -91,13 +91,10 @@ jobs:
               helm/syncseat/values-prod.yaml
           done
 
-      - name: Validate Production Helm Manifests
-        # Compiles your Helm sub-charts locally using your umbrella layout to verify template syntax sanity
+      - name: Validate production Helm manifests
+        working-directory: gitops
         run: |
-          echo "========================================="
-          echo "Validating production chart configurations"
-          echo "========================================="
-          helm template syncseat/ -f gitops/helm/syncseat/values-prod.yaml
+          make -f Makefile.helm helm-validate
 
       - name: Commit Production Promotion Change
         working-directory: gitops
